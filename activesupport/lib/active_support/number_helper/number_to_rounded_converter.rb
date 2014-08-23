@@ -4,30 +4,53 @@ module ActiveSupport
       self.namespace      = :precision
       self.validate_float = true
 
+      attr_reader :rounded_number
+
       def convert
-        precision = options.delete :precision
-        significant = options.delete :significant
+        @number = build_number(number)
+        @rounded_number = get_rounded_number        
+        format_number(NumberToDelimitedConverter.convert(formatted_string, options))
+      end
 
-        case number
-        when Float, String
-          @number = BigDecimal(number.to_s)
-        when Rational
-          @number = BigDecimal(number, digit_count(number.to_i) + precision)
-        else
-          @number = number.to_d
+      private
+        
+        def precision
+          @precision ||= options.delete :precision
         end
 
-        if significant && precision > 0
-          digits, rounded_number = digits_and_rounded_number(precision)
-          precision -= digits
-          precision = 0 if precision < 0 # don't let it be negative
-        else
-          rounded_number = number.round(precision)
-          rounded_number = rounded_number.to_i if precision == 0
-          rounded_number = rounded_number.abs if rounded_number.zero? # prevent showing negative zeros
+        def precision=(value)
+          @precision = value
         end
 
-        formatted_string =
+        def significant
+          @significant ||= options.delete :significant
+        end
+
+        def build_number(number)
+          case number
+          when Float, String
+            BigDecimal(number.to_s)
+          when Rational
+            BigDecimal(number, digit_count(number.to_i) + precision)
+          else
+            number.to_d
+          end
+        end
+
+        def get_rounded_number
+          if significant && precision > 0
+            digits, rounded_number = digits_and_rounded_number(precision)
+            precision -= digits
+            precision = 0 if precision < 0 # don't let it be negative
+          else
+            rounded_number = number.round(precision)
+            rounded_number = rounded_number.to_i if precision == 0
+            rounded_number = rounded_number.abs if rounded_number.zero? # prevent showing negative zeros
+          end
+          return rounded_number
+        end
+
+        def formatted_string
           if BigDecimal === rounded_number && rounded_number.finite?
             s = rounded_number.to_s('F') + '0'*precision
             a, b = s.split('.', 2)
@@ -35,12 +58,7 @@ module ActiveSupport
           else
             "%00.#{precision}f" % rounded_number
           end
-
-        delimited_number = NumberToDelimitedConverter.convert(formatted_string, options)
-        format_number(delimited_number)
-      end
-
-      private
+        end
 
         def digits_and_rounded_number(precision)
           if zero?
